@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mô phỏng Bãi Đỗ Xe Thông Minh | Smart Parking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#04060b;
+  --bg-2:#080d17;
+  --panel:#0b1220;
+  --panel-2:#0f1a2e;
+  --blue:#1f6fe0;
+  --blue-2:#4aa3ff;
+  --blue-3:#9fd0ff;
+  --text:#e8eefc;
+  --muted:#8a99b5;
+  --line:rgba(74,163,255,.18);
+  --green:#3ddc84;
+  --red:#ff5470;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;user-select:none;-webkit-user-select:none}
+body{
+  font-family:var(--sans);background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:14px;overflow-x:hidden;position:relative;
+}
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(900px 500px at 15% -10%,rgba(31,111,224,.22),transparent 60%),
+    radial-gradient(700px 500px at 100% 30%,rgba(74,163,255,.10),transparent 60%);
+}
+#rain{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+.app{
+  position:relative;z-index:1;width:100%;max-width:960px;
+  display:flex;flex-direction:column;gap:12px;
+}
+
+/* Thanh nhập biển số & trạng thái */
+.topbar{
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  border:1px solid var(--line);border-radius:16px;padding:12px 18px;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+}
+.plate-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.plate-form label{font:600 12px var(--mono);color:var(--blue-2);text-transform:uppercase;letter-spacing:.08em}
+.plate-form input{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+  padding:8px 12px;color:#fff;font:700 14px var(--mono);width:145px;text-transform:uppercase;
+  outline:none;transition:.2s;
+}
+.plate-form input:focus{border-color:var(--blue-2);box-shadow:0 0 0 3px rgba(74,163,255,.15)}
+.btn{
+  padding:8px 16px;border-radius:10px;border:1px solid var(--line);
+  background:linear-gradient(135deg,var(--blue),#1553b3);color:#fff;
+  font:600 13px var(--sans);cursor:pointer;transition:.2s;
+}
+.btn:hover{filter:brightness(1.1)}
+.btn.sec{background:var(--panel-2);color:var(--blue-3)}
+
+.status-box{
+  display:flex;align-items:center;gap:10px;
+  background:#021326;border:1px solid rgba(74,163,255,.35);
+  padding:8px 14px;border-radius:10px;font:500 13px var(--mono);color:#6ed0ff;
+  flex:1;min-width:260px;
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--blue-2);box-shadow:0 0 8px var(--blue-2);flex-shrink:0}
+
+/* Bảng thông tin Camera quét nổi nằm bên NGOÀI (phía trên khung game) */
+.cam-popup{
+  background:rgba(8,13,23,0.95);backdrop-filter:blur(10px);
+  border:1px solid var(--blue-2);border-radius:14px;padding:12px 18px;
+  font:500 13px var(--mono);color:var(--text);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.5);
+  opacity:0;transform:translateY(-8px);pointer-events:none;transition:.25s;
+}
+.cam-popup.show{opacity:1;transform:none}
+.cam-popup .cam-info-group{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.cam-popup .cam-head{color:var(--blue-2);font-weight:700;display:flex;align-items:center;gap:8px}
+.cam-popup .cam-row{display:flex;align-items:center;gap:8px}
+.cam-popup b{color:#fff}
+
+/* Khung Canvas mô hình */
+.stage-wrap{
+  position:relative;width:100%;aspect-ratio:16/10;max-height:66vh;
+  background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  box-shadow:0 20px 50px rgba(0,0,0,.6);
+}
+canvas#sim{width:100%;height:100%;display:block}
+
+/* Điều khiển cảm ứng & hướng dẫn */
+.controls-bar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px 18px;
+}
+.hint{font-size:13px;color:var(--muted)}
+.hint kbd{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:6px;
+  padding:2px 7px;font:600 12px var(--mono);color:var(--blue-3);
+}
+.dpad{display:flex;gap:8px;align-items:center}
+.dpad button{
+  width:46px;height:46px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--text);font:700 16px var(--mono);
+  cursor:pointer;touch-action:none;transition:.1s;
+}
+.dpad button:active,.dpad button.pressed{
+  background:var(--blue);border-color:var(--blue-2);color:#fff;transform:scale(.95);
+}
+@media(max-width:640px){
+  .stage-wrap{aspect-ratio:4/3;max-height:56vh}
+  .cam-popup{font-size:11px;padding:10px 14px;gap:10px}
+  .cam-popup .cam-info-group{gap:12px}
+}
+</style>
+</head>
+<body>
+
+<canvas id="rain"></canvas>
+
+<div class="app">
+  <!-- Thanh nhập biển số & LCD trạng thái -->
+  <div class="topbar">
+    <form class="plate-form" id="plateForm">
+      <label for="plateInput">Biển số xe:</label>
+      <input id="plateInput" type="text" maxlength="11" placeholder="51G-888.88" value="51G-888.88" required>
+      <button type="submit" class="btn">Xác nhận</button>
+      <button type="button" class="btn sec" id="resetBtn">Đặt lại</button>
+    </form>
+    <div class="status-box">
+      <span class="dot"></span>
+      <span id="lcdText">Nhập biển số xe, sau đó dùng W A S D lái xe đến Cổng Vào.</span>
+    </div>
+  </div>
+
+  <!-- Bảng thông tin Camera quét nổi nằm bên NGOÀI khung game -->
+  <div class="cam-popup" id="camPopup">
+    <div class="cam-head">
+      <span class="dot" style="background:var(--green);box-shadow:0 0 8px var(--green)"></span>
+      <span id="camTitle">CAM CỔNG VÀO</span>
+    </div>
+    <div class="cam-info-group">
+      <div class="cam-row"><span>Loại xe:</span><b>Xe hơi (4 chỗ)</b></div>
+      <div class="cam-row"><span>Biển số:</span><b id="camPlate" style="color:var(--blue-3)">---</b></div>
+      <div class="cam-row"><span>Trạng thái:</span><b id="camState" style="color:var(--green)">Hợp lệ</b></div>
+    </div>
+  </div>
+
+  <!-- Khu vực mô phỏng -->
+  <div class="stage-wrap">
+    <canvas id="sim" width="960" height="600"></canvas>
+  </div>
+
+  <!-- Nút điều khiển cho điện thoại & hướng dẫn PC -->
+  <div class="controls-bar">
+    <div class="hint">
+      Máy tính: <kbd>W</kbd> Tiến · <kbd>S</kbd> Lùi · <kbd>A</kbd> Trái · <kbd>D</kbd> Phải
+    </div>
+    <div class="dpad">
+      <button data-key="a" aria-label="Trái">A</button>
+      <button data-key="w" aria-label="Tiến">W</button>
+      <button data-key="s" aria-label="Lùi">S</button>
+      <button data-key="d" aria-label="Phải">D</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== HIỆU ỨNG NỀN NHỊ PHÂN ===== */
+(function(){
+  const c=document.getElementById('rain'),ctx=c.getContext('2d');
+  let W,H,flakes=[];
+  function resize(){
+    const dpr=window.devicePixelRatio||1;
+    W=innerWidth;H=innerHeight;
+    c.width=W*dpr;c.height=H*dpr;c.style.width=W+'px';c.style.height=H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const n=Math.min(120,Math.floor(W*H/11000));
+    flakes=Array.from({length:n},()=>({
+      x:Math.random()*W,y:Math.random()*H,v:.25+Math.random()*.6,
+      s:10+Math.random()*12,a:.05+Math.random()*.14,ch:Math.random()<.5?'0':'1'
+    }));
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(const f of flakes){
+      f.y+=f.v;if(f.y>H+20){f.y=-20;f.x=Math.random()*W}
+      ctx.font=f.s+'px "JetBrains Mono",monospace';
+      ctx.fillStyle='rgba(74,163,255,'+f.a+')';
+      ctx.fillText(f.ch,f.x,f.y);
+    }
+    requestAnimationFrame(draw);
+  }
+  addEventListener('resize',resize);resize();draw();
+})();
+
+/* ===== LOGIC MÔ PHỎNG BÃI ĐỖ XE ===== */
+(function(){
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d');
+  const lcd = document.getElementById('lcdText');
+  const camPopup = document.getElementById('camPopup');
+  const camTitle = document.getElementById('camTitle');
+  const camPlate = document.getElementById('camPlate');
+  const camState = document.getElementById('camState');
+  const plateInput = document.getElementById('plateInput');
+
+  const W = 960, H = 600;
+  let userPlate = '51G-888.88';
+
+  const keys = { w:false, a:false, s:false, d:false };
+
+  // Khuôn viên bãi đỗ xe (tọa độ chuẩn 960x600)
+  const LOT = { x: 260, y: 55, w: 640, h: 490 };
+
+  // 2 Cổng ở cạnh trái (Vào phía trên, Ra phía dưới)
+  const gates = {
+    in: {
+      x: LOT.x, y: 145, w: 24, h: 90,
+      angle: 0,
+      open: false,
+      scanned: false,
+      scanning: false,
+      scanProgress: 0,
+      cam: { x: LOT.x - 28, y: 112 }
+    },
+    out: {
+      x: LOT.x, y: 375, w: 24, h: 90,
+      angle: 0,
+      open: false,
+      scanned: false,
+      scanning: false,
+      scanProgress: 0,
+      cam: { x: LOT.x - 28, y: 492 }
+    }
+  };
+
+  // 4 ô đỗ xe xếp dọc ở cạnh phải — đối diện Cổng Vào & Cổng Ra
+  const slots = [
+    { id: 1, x: 660, y: 80,  w: 150, h: 96, occupied: true,  locked: true,  barAngle: 0, plate: '51A-123.45', color: '#475569' },
+    { id: 2, x: 660, y: 194, w: 150, h: 96, occupied: true,  locked: true,  barAngle: 0, plate: '60B-456.78', color: '#64748b' },
+    { id: 3, x: 660, y: 308, w: 150, h: 96, occupied: true,  locked: true,  barAngle: 0, plate: '59C-999.01', color: '#334155' },
+    { id: 4, x: 660, y: 422, w: 150, h: 96, occupied: false, locked: false, barAngle: 0, plate: '',           color: null }
+  ];
+
+  // Xe của người chơi
+  let car = {};
+  function resetCar(){
+    car = {
+      x: 110,
+      y: 190,
+      w: 54,
+      h: 30,
+      angle: 0,
+      speed: 0,
+      insideLot: false,
+      parkedInSlot4: false,
+      rotatingOnTurntable: false,
+      targetAngle: Math.PI,
+      exited: false
+    };
+    gates.in.open = false; gates.in.scanned = false; gates.in.scanning = false; gates.in.scanProgress = 0;
+    gates.out.open = false; gates.out.scanned = false; gates.out.scanning = false; gates.out.scanProgress = 0;
+    slots[3].occupied = false;
+    slots[3].locked = false;
+    slots[3].barAngle = 0;
+    camPopup.classList.remove('show');
+    lcd.textContent = `Biển số [${userPlate}] sẵn sàng. Lái xe (W A S D) đến Cổng Vào.`;
+  }
+  resetCar();
+
+  document.getElementById('plateForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const val = plateInput.value.trim().toUpperCase();
+    if(!val) return;
+    userPlate = val;
+    lcd.textContent = `Đã cập nhật biển số [${userPlate}]. Hãy lái xe tới Cổng Vào.`;
+  });
+  document.getElementById('resetBtn').addEventListener('click', resetCar);
+
+  addEventListener('keydown', e => {
+    if(document.activeElement === plateInput) return;
+    const k = e.key.toLowerCase();
+    if(k in keys){ keys[k] = true; e.preventDefault(); }
+  });
+  addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if(k in keys){ keys[k] = false; }
+  });
+
+  document.querySelectorAll('.dpad button').forEach(btn => {
+    const k = btn.dataset.key;
+    const down = e => { e.preventDefault(); keys[k] = true; btn.classList.add('pressed'); };
+    const up = e => { e.preventDefault(); keys[k] = false; btn.classList.remove('pressed'); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointerleave', up);
+    btn.addEventListener('pointercancel', up);
+  });
+
+  function showCamInfo(title, plate, stateText){
+    camTitle.textContent = title;
+    camPlate.textContent = plate;
+    camState.textContent = stateText;
+    camPopup.classList.add('show');
+  }
+
+  function rectIntersect(ax, ay, aw, ah, bx, by, bw, bh){
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function update(){
+    const gateInTarget = gates.in.open ? -Math.PI / 2 : 0;
+    gates.in.angle += (gateInTarget - gates.in.angle) * 0.12;
+
+    const gateOutTarget = gates.out.open ? -Math.PI / 2 : 0;
+    gates.out.angle += (gateOutTarget - gates.out.angle) * 0.12;
+
+    slots.forEach(s => {
+      const slotBarOpen = (!s.locked && !s.occupied);
+      const target = slotBarOpen ? -Math.PI / 2 : 0;
+      s.barAngle += (target - s.barAngle) * 0.1;
+    });
+
+    if(car.rotatingOnTurntable){
+      const cx = slots[3].x + slots[3].w / 2 - 4;
+      const cy = slots[3].y + slots[3].h / 2;
+      car.x += (cx - car.x) * 0.08;
+      car.y += (cy - car.y) * 0.08;
+
+      let diff = car.targetAngle - car.angle;
+      if(Math.abs(diff) > 0.015){
+        car.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.032);
+      } else {
+        car.angle = car.targetAngle;
+        car.rotatingOnTurntable = false;
+        car.parkedInSlot4 = true;
+        slots[3].occupied = true;
+        slots[3].locked = true;
+        lcd.textContent = `Mâm xoay hoàn tất! Đầu xe hướng ra cổng, LED đỏ bật. (Lái ra cổng)`;
+      }
+      return;
+    }
+
+    const accel = 0.16;
+    const maxSpeed = 3.1;
+    const friction = 0.92;
+
+    if(keys.w) car.speed = Math.min(maxSpeed, car.speed + accel);
+    if(keys.s) car.speed = Math.max(-maxSpeed * 0.7, car.speed - accel);
+    if(!keys.w && !keys.s) car.speed *= friction;
+    if(Math.abs(car.speed) < 0.02) car.speed = 0;
+
+    if(Math.abs(car.speed) > 0.1){
+      const turnDir = car.speed >= 0 ? 1 : -1;
+      if(keys.a) car.angle -= 0.042 * turnDir;
+      if(keys.d) car.angle += 0.042 * turnDir;
+    }
+
+    const nextX = car.x + Math.cos(car.angle) * car.speed;
+    const nextY = car.y + Math.sin(car.angle) * car.speed;
+
+    const distToInGate = Math.hypot(car.x - (gates.in.x - 45), car.y - (gates.in.y + gates.in.h / 2));
+    if(!car.insideLot && !gates.in.scanned && distToInGate < 58){
+      if(!gates.in.scanning){
+        gates.in.scanning = true;
+        gates.in.scanProgress = 0;
+        lcd.textContent = `Camera cổng vào đang quét nhận diện xe...`;
+      }
+    }
+    if(gates.in.scanning){
+      gates.in.scanProgress += 0.025;
+      if(gates.in.scanProgress >= 1){
+        gates.in.scanning = false;
+        gates.in.scanned = true;
+        gates.in.open = true;
+        showCamInfo('CAM CỔNG VÀO', userPlate, 'Mở barie vào');
+        lcd.textContent = `Quét xong: Xe hơi | Biển số [${userPlate}]. Mời vào ô số 4 đối diện.`;
+      }
+    }
+
+    const distToOutGate = Math.hypot(car.x - (gates.out.x + 55), car.y - (gates.out.y + gates.out.h / 2));
+    if(car.parkedInSlot4 && !gates.out.scanned && distToOutGate < 65){
+      if(!gates.out.scanning){
+        gates.out.scanning = true;
+        gates.out.scanProgress = 0;
+        lcd.textContent = `Camera cổng ra đang quét xác thực biển số...`;
+      }
+    }
+    if(gates.out.scanning){
+      gates.out.scanProgress += 0.025;
+      if(gates.out.scanProgress >= 1){
+        gates.out.scanning = false;
+        gates.out.scanned = true;
+        gates.out.open = true;
+        showCamInfo('CAM CỔNG RA', userPlate, 'Xác thực OK');
+        lcd.textContent = `Xác thực thành công [${userPlate}]. Barie cổng ra đã mở!`;
+      }
+    }
+
+    let blocked = false;
+    const r = 18;
+
+    if(nextX < 35 || nextX > W - 35 || nextY < 35 || nextY > H - 35) blocked = true;
+
+    const inGap = (nextY > gates.in.y + 8 && nextY < gates.in.y + gates.in.h - 8);
+    const outGap = (nextY > gates.out.y + 8 && nextY < gates.out.y + gates.out.h - 8);
+
+    if(Math.abs(nextX - LOT.x) < r + 6 && nextY > LOT.y && nextY < LOT.y + LOT.h){
+      if(!inGap && !outGap) blocked = true;
+      if(inGap && !gates.in.open) blocked = true;
+      if(outGap && !gates.out.open) blocked = true;
+    }
+    if(nextX > LOT.x - r){
+      if(Math.abs(nextY - LOT.y) < r + 5) blocked = true;
+      if(Math.abs(nextY - (LOT.y + LOT.h)) < r + 5) blocked = true;
+      if(Math.abs(nextX - (LOT.x + LOT.w)) < r + 5) blocked = true;
+    }
+
+    for(let i = 0; i < 3; i++){
+      const s = slots[i];
+      if(rectIntersect(nextX - r, nextY - r, r*2, r*2, s.x - 4, s.y + 6, s.w, s.h - 12)){
+        blocked = true;
+      }
+    }
+
+    if(!blocked){
+      car.x = nextX;
+      car.y = nextY;
+    } else {
+      car.speed = 0;
+    }
+
+    if(!car.insideLot && car.x > LOT.x + 55){
+      car.insideLot = true;
+      gates.in.open = false;
+      lcd.textContent = `Xe đã qua cổng. Lái sang ô số 4 đối diện (LED xanh).`;
+    }
+
+    const s4 = slots[3];
+    const inSlot4Zone = (
+      car.x > s4.x + 25 && car.x < s4.x + s4.w - 18 &&
+      car.y > s4.y + 18 && car.y < s4.y + s4.h - 18
+    );
+
+    if(car.insideLot && !car.parkedInSlot4 && !car.rotatingOnTurntable && inSlot4Zone){
+      car.speed = 0;
+      car.rotatingOnTurntable = true;
+      car.targetAngle = car.angle + Math.PI;
+      lcd.textContent = `Xe đã vào ô số 4! Mâm xoay đang quay đầu xe 180°...`;
+    }
+
+    if(car.parkedInSlot4 && slots[3].occupied && !inSlot4Zone){
+      slots[3].occupied = false;
+      slots[3].locked = false;
+      lcd.textContent = `Xe rời ô số 4. Lái thẳng sang Cổng Ra đối diện.`;
+    }
+
+    if(car.parkedInSlot4 && gates.out.open && car.x < LOT.x - 55){
+      gates.out.open = false;
+      car.exited = true;
+      lcd.textContent = `Xe [${userPlate}] đã rời bãi an toàn! Bấm "Đặt lại" để chơi tiếp.`;
+    }
+  }
+
+  function drawVerticalBarrier(pivotX, pivotY, length, angle, isLocked){
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#4aa3ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.rotate(angle);
+    const seg = 5;
+    const segLen = length / seg;
+    for(let i = 0; i < seg; i++){
+      ctx.fillStyle = (i % 2 === 0) ? (isLocked ? '#ff5470' : '#f8fafc') : '#1f6fe0';
+      ctx.fillRect(-2.5, i * segLen, 5, segLen);
+    }
+    ctx.restore();
+  }
+
+  function drawCamera(x, y, label, scanning, progress){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#0f1a2e';
+    ctx.strokeStyle = '#4aa3ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-14, -10, 28, 20, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = scanning ? '#3ddc84' : '#4aa3ff';
+    ctx.beginPath();
+    ctx.arc(10, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#9fd0ff';
+    ctx.font = '600 10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, 0, -15);
+
+    if(scanning){
+      const scanY = -20 + Math.sin(progress * Math.PI * 6) * 28;
+      const grad = ctx.createLinearGradient(14, 0, 85, 0);
+      grad.addColorStop(0, 'rgba(61, 220, 132, 0.55)');
+      grad.addColorStop(1, 'rgba(61, 220, 132, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(85, -35);
+      ctx.lineTo(85, 35);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = '#3ddc84';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(85, scanY);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCar(x, y, w, h, angle, color, plate, isPlayer){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.roundRect(-w/2 + 2, -h/2 + 4, w, h, 8);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.strokeStyle = isPlayer ? '#9fd0ff' : '#94a3b8';
+    ctx.lineWidth = isPlayer ? 2 : 1;
+    ctx.beginPath();
+    ctx.roundRect(-w/2, -h/2, w, h, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#071326';
+    ctx.beginPath();
+    ctx.roundRect(w/2 - 19, -h/2 + 4, 11, h - 8, 3);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.roundRect(-w/2 + 6, -h/2 + 5, 7, h - 10, 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(w/2 - 3, -h/2 + 4, 3, 5);
+    ctx.fillRect(w/2 - 3, h/2 - 9, 3, 5);
+
+    ctx.fillStyle = '#ff5470';
+    ctx.fillRect(-w/2, -h/2 + 4, 2.5, 5);
+    ctx.fillRect(-w/2, h/2 - 9, 2.5, 5);
+
+    ctx.restore();
+
+    if(plate){
+      ctx.save();
+      ctx.translate(x, y - 24);
+      ctx.fillStyle = 'rgba(4,6,11,0.85)';
+      ctx.strokeStyle = isPlayer ? '#4aa3ff' : 'rgba(148,163,184,0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(-38, -9, 76, 17, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = isPlayer ? '#fff' : '#cbd5e1';
+      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(plate, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function render(){
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.fillStyle = '#070c16';
+    ctx.fillRect(0, 0, LOT.x, H);
+    ctx.strokeStyle = 'rgba(74,163,255,0.22)';
+    ctx.setLineDash([14, 14]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(110, 0); ctx.lineTo(110, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#0a1222';
+    ctx.fillRect(LOT.x, LOT.y, LOT.w, LOT.h);
+
+    slots.forEach((s, idx) => {
+      ctx.fillStyle = s.occupied ? 'rgba(255,84,112,0.06)' : 'rgba(61,220,132,0.07)';
+      ctx.strokeStyle = s.occupied ? 'rgba(255,84,112,0.45)' : 'rgba(61,220,132,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(s.x, s.y, s.w, s.h, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      const cx = s.x + s.w / 2 - 4;
+      const cy = s.y + s.h / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if(idx === 3 && car.rotatingOnTurntable){
+        ctx.rotate(car.angle);
+      }
+      ctx.strokeStyle = idx === 3 ? 'rgba(74,163,255,0.45)' : 'rgba(138,153,181,0.2)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      ctx.fillStyle = '#8a99b5';
+      ctx.font = '700 11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('Ô 0' + s.id, s.x + s.w - 10, s.y + 18);
+
+      const ledColor = s.occupied ? '#ff5470' : '#3ddc84';
+      const ledX = s.x + s.w + 26;
+      const ledY = s.y + s.h / 2 - 6;
+      ctx.save();
+      ctx.fillStyle = ledColor;
+      ctx.shadowColor = ledColor;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(ledX, ledY, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = ledColor;
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.occupied ? 'FULL' : 'TRỐNG', ledX, ledY + 18);
+
+      if(idx < 3 && s.occupied){
+        drawCar(cx, cy, 54, 30, Math.PI, s.color, s.plate, false);
+      }
+
+      drawVerticalBarrier(s.x, s.y + 10, s.h - 20, s.barAngle, s.locked);
+    });
+
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(LOT.x, LOT.y);
+    ctx.lineTo(LOT.x + LOT.w, LOT.y);
+    ctx.lineTo(LOT.x + LOT.w, LOT.y + LOT.h);
+    ctx.lineTo(LOT.x, LOT.y + LOT.h);
+    ctx.moveTo(LOT.x, LOT.y);
+    ctx.lineTo(LOT.x, gates.in.y);
+    ctx.moveTo(LOT.x, gates.in.y + gates.in.h);
+    ctx.lineTo(LOT.x, gates.out.y);
+    ctx.moveTo(LOT.x, gates.out.y + gates.out.h);
+    ctx.lineTo(LOT.x, LOT.y + LOT.h);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(74,163,255,0.3)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gates.in.x - 75, gates.in.y + 10, 68, gates.in.h - 20);
+    ctx.strokeRect(gates.out.x + 12, gates.out.y + 10, 68, gates.out.h - 20);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#4aa3ff';
+    ctx.font = '700 11px "JetBrains Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('CỔNG VÀO →', LOT.x - 14, gates.in.y - 8);
+    ctx.fillText('← CỔNG RA', LOT.x - 14, gates.out.y - 8);
+
+    drawCamera(gates.in.cam.x, gates.in.cam.y, 'CAM VÀO', gates.in.scanning, gates.in.scanProgress);
+    drawCamera(gates.out.cam.x, gates.out.cam.y, 'CAM RA', gates.out.scanning, gates.out.scanProgress);
+
+    drawVerticalBarrier(LOT.x, gates.in.y + 4, gates.in.h - 8, gates.in.angle, !gates.in.open);
+    drawVerticalBarrier(LOT.x, gates.out.y + 4, gates.out.h - 8, gates.out.angle, !gates.out.open);
+
+    drawCar(car.x, car.y, car.w, car.h, car.angle, '#1f6fe0', userPlate, true);
+  }
+
+  function loop(){
+    update();
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
